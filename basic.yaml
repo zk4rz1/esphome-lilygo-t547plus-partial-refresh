@@ -41,10 +41,13 @@ logger:
   # hardware_uart: USB_CDC  # see note about <https://github.com/esphome/feature-requests/issues/1906> above
 
 # Enable Home Assistant API
-api:
+api:  # Set up a key instead: https://community.home-assistant.io/t/2023-2-esphome-deprecated-api-password-how-to-update-to-encryption-key
   password: !secret api_ota_password
+
 ota:
+  platform: esphome
   password: !secret api_ota_password
+
 wifi: !include wifi-secrets.yaml
 
 binary_sensor:
