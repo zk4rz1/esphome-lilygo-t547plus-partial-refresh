@@ -42,11 +42,18 @@ void T547::update() {
   this->display();
 }
 
+auto pixel=new uint8_t[EPD_WIDTH][EPD_HEIGHT]; // Store current pixel color for every coordinate(x,y)
+auto pixe2=new uint8_t[EPD_WIDTH][EPD_HEIGHT]; // Store last updated pixel color for every coordinate(x,y)
+//std::string logi = "";
+
 void HOT T547::draw_absolute_pixel_internal(int x, int y, Color color) {
   if (x >= this->get_width_internal() || y >= this->get_height_internal() || x < 0 || y < 0)
     return;
   uint8_t gs = 255 - ((color.red * 2126 / 10000) + (color.green * 7152 / 10000) + (color.blue * 722 / 10000));
+  
+  pixel[x][y]=1*gs;
   epd_draw_pixel(x, y, gs, this->buffer_);
+  
 }
 
 void T547::dump_config() {
@@ -70,14 +77,48 @@ void T547::eink_on_() {
   panel_on_ = 1;
 }
 
+uint32_t last_full_refresh=0; // Last timestamp of full refresh
+uint32_t full_refresh_every_millis=60*60*1000; // Perform a full refresh every hour
 void T547::display() {
   ESP_LOGV(TAG, "Display called");
   uint32_t start_time = millis();
+  
+  // Calculate bounds of are where effectively changed pixels are affected
+  int min_x=-1; int min_y=-1; int max_x=-1; int max_y=-1;
+  for(int x=0;x<EPD_WIDTH;x++) {
+	for(int y=0;y<EPD_HEIGHT;y++) {
+	  if (pixe2[x][y]!=pixel[x][y]) { // If pixel(x,y) has changed color since last update
+	    if (min_x==-1 || min_x>x) min_x=x;
+	    if (min_y==-1 || min_y>y) min_y=y;
+	    if (max_x==-1 || max_x<x) max_x=x;
+	    if (max_y==-1 || max_y<y) max_y=y;
+	  }
+	  pixe2[x][y]=1*pixel[x][y];
+	}
+  }
 
-  epd_poweron();
-  epd_clear();
-  epd_draw_grayscale_image(epd_full_screen(), this->buffer_);
-  epd_poweroff();
+  if (last_full_refresh==0 || millis()-last_full_refresh>full_refresh_every_millis) { // Perform full refresh at least first time and then every full_refresh_every_millis
+	  epd_poweron();
+	  epd_clear();
+	  epd_draw_grayscale_image(epd_full_screen(), this->buffer_);
+	  epd_poweroff();
+	  last_full_refresh=1*millis();
+  } else if (min_x!=-1 && min_y!=-1 && max_x!=-1 && max_y!=-1) { // Partial update only when needed
+	  min_x-=10;
+	  min_y-=10;
+	  max_x+=10;
+	  max_y+=10;
+	  if (min_x<0) min_x=0;
+	  if (min_y<0) min_y=0;
+	  if (max_x>EPD_WIDTH) max_x=EPD_WIDTH;
+	  if (max_y>EPD_HEIGHT) max_y=EPD_HEIGHT;
+	  epd_poweron();
+	  Rect_t area = {.x = min_x, .y = min_y, .width = max_x - min_x, .height = max_y - min_y};
+	  epd_clear_area(area);
+	  epd_draw_grayscale_image(epd_full_screen(), this->buffer_);
+	  min_x=-1; min_y=-1; max_x=-1; max_y=-1;
+	  epd_poweroff();
+  }
 
   ESP_LOGV(TAG, "Display finished (full) (%ums)", millis() - start_time);
 }
